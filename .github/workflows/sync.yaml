@@ -44,9 +44,9 @@ jobs:
           
           git checkout origin/main -- process.py
           
-          python3 process_json.py
+          python3 process.py
           
-          rm process_json.py
+          rm process.py
 
       - name: Commit and Force Push
         if: steps.check.outputs.run_sync == 'true'
