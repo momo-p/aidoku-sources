@@ -1,0 +1,60 @@
+name: Sync with aidoku index sources
+
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout gh-pages
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          fetch-depth: 0
+
+      - name: Check for File Changes (Blob Hash)
+        id: check
+        run: |
+          git remote add upstream https://github.com/Aidoku-Community/sources.git
+
+          git fetch upstream gh-pages
+
+          REMOTE_FILE_HASH=$(git ls-tree upstream/gh-pages index.json | awk '{print $3}')
+
+          LOCAL_FILE_HASH=$(cat .sync_file_hash 2>/dev/null || echo "none")
+          
+          if [ "$REMOTE_FILE_HASH" = "$LOCAL_FILE_HASH" ] && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+            echo "No data changes in index.json. Skipping."
+            echo "run_sync=false" >> $GITHUB_OUTPUT
+          else
+            echo "Data change detected in index.json (or manual run forced)!"
+            echo "run_sync=true" >> $GITHUB_OUTPUT
+            echo "$REMOTE_FILE_HASH" > .sync_file_hash
+          fi
+
+      - name: Reset to Remote and Process
+        if: steps.check.outputs.run_sync == 'true'
+        run: |
+          git reset --hard upstream/gh-pages
+          
+          git rev-parse upstream/gh-pages > .sync_file_hash
+          
+          git checkout origin/main -- process.py
+          
+          python3 process_json.py
+          
+          rm process_json.py
+
+      - name: Commit and Force Push
+        if: steps.check.outputs.run_sync == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+          git add .
+
+          git commit -m "Sync with aidoku index sources"
+          git push --force origin gh-pages
